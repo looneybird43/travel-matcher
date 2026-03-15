@@ -175,11 +175,12 @@ function ContactForm({ destination, onClose }) {
   );
 }
 
-function TripCard({ trip, index }) {
+function TripCard({ trip, index, accentColor }) {
   const [expanded, setExpanded] = useState(false);
   const [showContact, setShowContact] = useState(false);
-  const colors = ["#d4a373", "#8ecfc9", "#c9b8a8"];
-  const color = colors[index % colors.length];
+  const intlColors = ["#d4a373", "#8ecfc9", "#c9b8a8"];
+  const nearColors = ["#a8c5a0", "#b8a9c9", "#c9a8a8"];
+  const color = accentColor || (index < 3 ? intlColors[index % 3] : nearColors[index % 3]);
   const btn = { padding: "9px 14px", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: "700", fontFamily: "'Crimson Pro', Georgia, serif", textDecoration: "none", display: "inline-block" };
 
   return (
@@ -234,6 +235,19 @@ function TripCard({ trip, index }) {
   );
 }
 
+// ─── Section divider between international and nearby ─────────────────────────
+function SectionDivider({ label, sublabel }) {
+  return (
+    <div style={{ margin: "36px 0 24px", textAlign: "center", position: "relative" }}>
+      <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: "1px", background: "rgba(255,255,255,0.06)" }} />
+      <div style={{ position: "relative", display: "inline-block", background: "#0e0a07", padding: "0 16px" }}>
+        <div style={{ fontSize: "11px", letterSpacing: "4px", color: "#a8c5a0", textTransform: "uppercase", marginBottom: "4px" }}>{label}</div>
+        <div style={{ color: "#6a5848", fontSize: "13px", fontFamily: "'Crimson Pro', Georgia, serif" }}>{sublabel}</div>
+      </div>
+    </div>
+  );
+}
+
 const defaultAnswers = { topExperiences: [], accommodation: "", mustHaves: [], food: "", foodAvoid: [], budgetNightly: 150, tripDays: 10, departure: "US East Coast", timeZonePref: "no_pref", remoteWork: "no", wfhNeeds: [], travelWith: "", avoid: [], season: "any", flightTolerance: "medium", openTo: [], extra: "" };
 
 export default function TravelMatcher() {
@@ -241,6 +255,7 @@ export default function TravelMatcher() {
   const [answers, setAnswers] = useState(defaultAnswers);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
+  const [nearbyResults, setNearbyResults] = useState(null);
   const [error, setError] = useState(null);
 
   const currentStep = STEPS[step - 1];
@@ -254,15 +269,12 @@ export default function TravelMatcher() {
     });
   }, []);
 
-  const buildPrompt = () => {
+  const buildProfile = () => {
     const topExp = answers.topExperiences.map((id) => EXPERIENCE_OPTIONS.find((o) => o.id === id)?.label).filter(Boolean).join(", ");
     const accom = ACCOMMODATION_OPTIONS.find((o) => o.id === answers.accommodation)?.label || "";
     const foodStyle = FOOD_OPTIONS.find((o) => o.id === answers.food)?.label || "";
     const avoidList = answers.avoid.map((id) => AVOID_OPTIONS.find((o) => o.id === id)?.label).filter(Boolean).join(", ");
-    return `You are an expert travel matchmaker specializing in off-the-beaten-path, authentic destinations. Based on the traveler profile below, suggest exactly 3 trip destinations they would NOT typically think of.
-
-TRAVELER PROFILE:
-- Top experiences: ${topExp || "not specified"}
+    return `- Top experiences: ${topExp || "not specified"}
 - Accommodation: ${accom}
 - Food: ${foodStyle}
 - Nightly budget: $${answers.budgetNightly}
@@ -274,24 +286,65 @@ TRAVELER PROFILE:
 - Time zone: ${answers.timeZonePref}
 - Season: ${answers.season}
 - Avoiding: ${avoidList || "nothing specific"}
-- Notes: ${answers.extra || "none"}
-
-RULES: Be specific (city/region not country). Prioritize unknown places. Diverse regions. Honest logistics.
-
-Respond ONLY with a JSON array of 3 objects, no markdown:
-{"destination":"place","country":"country","tagline":"one sentence","why":"why it fits","activities":"what to do","stay":"where to stay","food":"food scene","logistics":"practical notes","surprise":"the surprise factor"}`;
+- Notes: ${answers.extra || "none"}`;
   };
 
+  const buildIntlPrompt = () => `You are an expert travel matchmaker. Based on this traveler profile, suggest exactly 3 off-the-beaten-path INTERNATIONAL destinations (outside the US) they would not typically think of.
+
+TRAVELER PROFILE:
+${buildProfile()}
+
+RULES: Be specific (city/region not country). Prioritize unknown places. Diverse continents. Honest logistics.
+
+Respond ONLY with a JSON array of 3 objects, no markdown:
+{"destination":"place","country":"country","tagline":"one evocative sentence","why":"why it fits their profile","activities":"what to do there","stay":"where to stay","food":"food scene","logistics":"practical notes on flights/visa/timing","surprise":"the one thing that will genuinely surprise them"}`;
+
+  const buildNearbyPrompt = (intlTrips) => `You are an expert travel matchmaker. A traveler got these 3 international trip recommendations:
+${intlTrips.map(t => `- ${t.destination}, ${t.country} (${t.tagline})`).join('\n')}
+
+Based on their profile AND those international picks, suggest 3 US-based or nearby (Canada, Caribbean, Mexico, or Central America — max 4 hour flight from US) alternatives that capture a SIMILAR vibe to each international pick but are more accessible.
+
+TRAVELER PROFILE:
+${buildProfile()}
+
+RULES:
+1. Each nearby pick should feel like a spiritual cousin to one of the international picks
+2. Include a "vibeMatch" field naming which international destination it mirrors and why
+3. Must be genuinely underrated — not Times Square or Miami Beach
+4. Be specific (city/region/park, not just "the Caribbean")
+
+Respond ONLY with a JSON array of 3 objects, no markdown:
+{"destination":"place","country":"US or nearby country","tagline":"one evocative sentence","vibeMatch":"mirrors [international destination] because...","why":"why it fits their profile","activities":"what to do there","stay":"where to stay","food":"food scene","logistics":"practical notes","surprise":"the one thing that will genuinely surprise them"}`;
+
   const generateTrips = async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
+    setError(null);
+    setNearbyResults(null);
     try {
-      const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: buildPrompt() }) });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setResults(data.trips);
+      // Run international prompt first
+      const intlRes = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: buildIntlPrompt() }),
+      });
+      const intlData = await intlRes.json();
+      if (intlData.error) throw new Error(intlData.error);
+      setResults(intlData.trips);
       setStep(STEPS.length + 1);
-    } catch (err) { setError(`Error: ${err.message}`); }
-    finally { setLoading(false); }
+
+      // Then run nearby prompt using intl results as context
+      const nearbyRes = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: buildNearbyPrompt(intlData.trips) }),
+      });
+      const nearbyData = await nearbyRes.json();
+      if (!nearbyData.error) setNearbyResults(nearbyData.trips);
+    } catch (err) {
+      setError(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const cs = { minHeight: "100vh", background: "#0e0a07", color: "#f0dfc0", fontFamily: "'Crimson Pro', Georgia, serif", display: "flex", flexDirection: "column", alignItems: "center", padding: "0 16px 60px" };
@@ -303,7 +356,7 @@ Respond ONLY with a JSON array of 3 objects, no markdown:
       <div style={{ ...card, textAlign: "center", paddingTop: "60px" }}>
         <div style={{ fontSize: "13px", letterSpacing: "4px", color: "#d4a373", textTransform: "uppercase", marginBottom: "24px" }}>Travel Matchmaker</div>
         <h1 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: "clamp(32px,6vw,48px)", fontWeight: "400", lineHeight: "1.2", marginBottom: "20px", color: "#f0dfc0" }}>Where should<br /><em>you</em> go next?</h1>
-        <p style={{ color: "#9a8878", fontSize: "16px", lineHeight: "1.7", maxWidth: "380px", margin: "0 auto 40px" }}>Answer 6 short questions. Get 3 trip ideas you'd never have found on your own.</p>
+        <p style={{ color: "#9a8878", fontSize: "16px", lineHeight: "1.7", maxWidth: "380px", margin: "0 auto 40px" }}>Answer 6 short questions. Get 3 global trip ideas you'd never have found — plus 3 closer-to-home options with the same vibe.</p>
         <button onClick={() => setStep(1)} style={{ padding: "16px 40px", background: "#d4a373", color: "#1a110a", border: "none", borderRadius: "8px", fontSize: "15px", fontWeight: "700", cursor: "pointer", letterSpacing: "1px", fontFamily: "'Crimson Pro', Georgia, serif" }}>Begin →</button>
       </div>
     </div>
@@ -315,7 +368,7 @@ Respond ONLY with a JSON array of 3 objects, no markdown:
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: "40px", marginBottom: "20px", animation: "spin 2s linear infinite", display: "inline-block" }}>🧭</div>
         <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: "22px", color: "#f0dfc0", marginBottom: "8px" }}>Finding your places…</div>
-        <div style={{ color: "#9a8878", fontSize: "14px" }}>Matching your profile to the world's hidden corners</div>
+        <div style={{ color: "#9a8878", fontSize: "14px" }}>Searching the world for your matches</div>
       </div>
     </div>
   );
@@ -323,14 +376,44 @@ Respond ONLY with a JSON array of 3 objects, no markdown:
   if (step === STEPS.length + 1) return (
     <div style={cs}>
       <div style={card}>
+        {/* ── International section ── */}
         <div style={{ textAlign: "center", paddingTop: "40px", marginBottom: "32px" }}>
-          <div style={{ fontSize: "11px", letterSpacing: "4px", color: "#d4a373", textTransform: "uppercase", marginBottom: "12px" }}>Your Matches</div>
-          <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: "28px", fontWeight: "400", color: "#f0dfc0", marginBottom: "8px" }}>3 Trips Worth Taking</h2>
-          <p style={{ color: "#9a8878", fontSize: "14px" }}>Tap each card to explore — and book</p>
+          <div style={{ fontSize: "11px", letterSpacing: "4px", color: "#d4a373", textTransform: "uppercase", marginBottom: "12px" }}>Go Far</div>
+          <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: "28px", fontWeight: "400", color: "#f0dfc0", marginBottom: "8px" }}>3 International Trips</h2>
+          <p style={{ color: "#9a8878", fontSize: "14px" }}>Off the map. Matched to you. Tap to explore.</p>
         </div>
-        {results?.map((trip, i) => <TripCard key={i} trip={trip} index={i} />)}
-        <div style={{ textAlign: "center", marginTop: "32px" }}>
-          <button onClick={() => { setStep(0); setResults(null); setAnswers(defaultAnswers); }} style={{ background: "transparent", border: "1px solid #3a2a1a", color: "#9a8878", padding: "12px 28px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontFamily: "'Crimson Pro', Georgia, serif" }}>Start Over</button>
+        {results?.map((trip, i) => <TripCard key={`intl-${i}`} trip={trip} index={i} />)}
+
+        {/* ── Closer to home section ── */}
+        <SectionDivider label="Stay Closer" sublabel="Same vibe, shorter journey" />
+
+        {nearbyResults ? (
+          <>
+            <div style={{ textAlign: "center", marginBottom: "24px" }}>
+              <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: "24px", fontWeight: "400", color: "#f0dfc0", marginBottom: "6px" }}>3 Closer-to-Home Options</h2>
+              <p style={{ color: "#9a8878", fontSize: "13px" }}>US & nearby — same energy, no passport line</p>
+            </div>
+            {nearbyResults.map((trip, i) => (
+              <div key={`nearby-${i}`}>
+                {trip.vibeMatch && (
+                  <div style={{ fontSize: "11px", color: "#a8c5a0", letterSpacing: "1px", marginBottom: "6px", paddingLeft: "4px" }}>
+                    ↳ {trip.vibeMatch}
+                  </div>
+                )}
+                <TripCard trip={trip} index={i} accentColor={["#a8c5a0", "#b8a9c9", "#c9a8a8"][i % 3]} />
+              </div>
+            ))}
+          </>
+        ) : (
+          <div style={{ textAlign: "center", padding: "32px 0" }}>
+            <style>{`@keyframes spin2{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+            <div style={{ width: "24px", height: "24px", border: "2px solid rgba(168,197,160,0.2)", borderTopColor: "#a8c5a0", borderRadius: "50%", animation: "spin2 0.8s linear infinite", margin: "0 auto 12px" }} />
+            <div style={{ color: "#6a5848", fontSize: "13px" }}>Finding closer options…</div>
+          </div>
+        )}
+
+        <div style={{ textAlign: "center", marginTop: "40px" }}>
+          <button onClick={() => { setStep(0); setResults(null); setNearbyResults(null); setAnswers(defaultAnswers); }} style={{ background: "transparent", border: "1px solid #3a2a1a", color: "#9a8878", padding: "12px 28px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontFamily: "'Crimson Pro', Georgia, serif" }}>Start Over</button>
         </div>
       </div>
     </div>
