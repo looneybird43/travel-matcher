@@ -1,6 +1,6 @@
 # Travel Matchmaker
 
-An AI-powered travel  recommendation tool. Answer 6 questions, get 3 personalized trip ideas you'd never have found on your own.
+An AI-powered travel recommendation tool. Answer 6 questions, get 3 personalized trip ideas you'd never have found on your own.
 
 ## Deploy to Vercel (5 minutes, free)
 
