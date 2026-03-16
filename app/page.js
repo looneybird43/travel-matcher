@@ -235,6 +235,71 @@ function TripCard({ trip, index, accentColor }) {
   );
 }
 
+// ─── Email capture gate ───────────────────────────────────────────────────────
+
+function EmailGate({ onDone }) {
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [status, setStatus] = useState(null); // null | "sending" | "done"
+
+  const submit = async (skip = false) => {
+    if (!skip && email) {
+      setStatus("sending");
+      try {
+        await fetch("/api/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, name }),
+        });
+      } catch (_) {}
+    }
+    setStatus("done");
+    onDone();
+  };
+
+  return (
+    <div style={{ background: "rgba(212,163,115,0.06)", border: "1px solid rgba(212,163,115,0.25)", borderRadius: "16px", padding: "28px 24px", marginBottom: "32px", textAlign: "center" }}>
+      <div style={{ fontSize: "32px", marginBottom: "12px" }}>✉️</div>
+      <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: "20px", color: "#f0dfc0", marginBottom: "8px", fontWeight: "400" }}>
+        Save your results
+      </div>
+      <p style={{ color: "#9a8878", fontSize: "13px", lineHeight: "1.6", marginBottom: "20px", maxWidth: "340px", margin: "0 auto 20px" }}>
+        Get your 6 matches sent to your inbox, plus a weekly hidden destination drop — places most people will never find.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxWidth: "320px", margin: "0 auto" }}>
+        <input
+          type="text"
+          placeholder="First name"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          style={{ padding: "12px 14px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "8px", color: "#f0dfc0", fontSize: "14px", fontFamily: "'Crimson Pro', Georgia, serif" }}
+        />
+        <input
+          type="email"
+          placeholder="Email address *"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          style={{ padding: "12px 14px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "8px", color: "#f0dfc0", fontSize: "14px", fontFamily: "'Crimson Pro', Georgia, serif" }}
+        />
+        <button
+          onClick={() => submit(false)}
+          disabled={!email || status === "sending"}
+          style={{ padding: "13px", background: "#d4a373", color: "#1a110a", border: "none", borderRadius: "8px", fontSize: "14px", fontWeight: "700", cursor: "pointer", fontFamily: "'Crimson Pro', Georgia, serif", opacity: !email ? 0.5 : 1 }}
+        >
+          {status === "sending" ? "Saving…" : "Send me my results →"}
+        </button>
+        <button
+          onClick={() => submit(true)}
+          style={{ padding: "8px", background: "transparent", border: "none", color: "#6a5848", fontSize: "12px", cursor: "pointer", fontFamily: "'Crimson Pro', Georgia, serif" }}
+        >
+          No thanks, just show me the results
+        </button>
+      </div>
+      <p style={{ color: "#4a3828", fontSize: "11px", marginTop: "12px" }}>No spam. Unsubscribe anytime.</p>
+    </div>
+  );
+}
+
 // ─── Section divider between international and nearby ─────────────────────────
 function SectionDivider({ label, sublabel }) {
   return (
@@ -257,6 +322,8 @@ export default function TravelMatcher() {
   const [results, setResults] = useState(null);
   const [nearbyResults, setNearbyResults] = useState(null);
   const [error, setError] = useState(null);
+  const [showEmailGate, setShowEmailGate] = useState(false);
+  const [emailDone, setEmailDone] = useState(false);
 
   const currentStep = STEPS[step - 1];
   const update = useCallback((field, value) => setAnswers((prev) => ({ ...prev, [field]: value })), []);
@@ -321,7 +388,7 @@ Respond ONLY with a JSON array of 3 objects, no markdown:
     setError(null);
     setNearbyResults(null);
     try {
-      // Run international prompt first
+      // Run international prompt first, then kick off nearby in parallel
       const intlRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -330,16 +397,17 @@ Respond ONLY with a JSON array of 3 objects, no markdown:
       const intlData = await intlRes.json();
       if (intlData.error) throw new Error(intlData.error);
       setResults(intlData.trips);
+      setShowEmailGate(true);
       setStep(STEPS.length + 1);
 
-      // Then run nearby prompt using intl results as context
-      const nearbyRes = await fetch("/api/generate", {
+      // Fire nearby call immediately in background — don't await before showing results
+      fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: buildNearbyPrompt(intlData.trips) }),
-      });
-      const nearbyData = await nearbyRes.json();
-      if (!nearbyData.error) setNearbyResults(nearbyData.trips);
+      }).then(r => r.json()).then(nearbyData => {
+        if (!nearbyData.error) setNearbyResults(nearbyData.trips);
+      }).catch(() => {});
     } catch (err) {
       setError(`Error: ${err.message}`);
     } finally {
@@ -376,45 +444,61 @@ Respond ONLY with a JSON array of 3 objects, no markdown:
   if (step === STEPS.length + 1) return (
     <div style={cs}>
       <div style={card}>
-        {/* ── International section ── */}
-        <div style={{ textAlign: "center", paddingTop: "40px", marginBottom: "32px" }}>
-          <div style={{ fontSize: "11px", letterSpacing: "4px", color: "#d4a373", textTransform: "uppercase", marginBottom: "12px" }}>Go Far</div>
-          <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: "28px", fontWeight: "400", color: "#f0dfc0", marginBottom: "8px" }}>3 International Trips</h2>
-          <p style={{ color: "#9a8878", fontSize: "14px" }}>Off the map. Matched to you. Tap to explore.</p>
-        </div>
-        {results?.map((trip, i) => <TripCard key={`intl-${i}`} trip={trip} index={i} />)}
-
-        {/* ── Closer to home section ── */}
-        <SectionDivider label="Stay Closer" sublabel="Same vibe, shorter journey" />
-
-        {nearbyResults ? (
-          <>
+        {/* ── Email gate (shown until dismissed) ── */}
+        {showEmailGate && !emailDone && (
+          <div style={{ paddingTop: "40px" }}>
             <div style={{ textAlign: "center", marginBottom: "24px" }}>
-              <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: "24px", fontWeight: "400", color: "#f0dfc0", marginBottom: "6px" }}>3 Closer-to-Home Options</h2>
-              <p style={{ color: "#9a8878", fontSize: "13px" }}>US & nearby — same energy, no passport line</p>
+              <div style={{ fontSize: "11px", letterSpacing: "4px", color: "#d4a373", textTransform: "uppercase", marginBottom: "8px" }}>Your Matches Are Ready</div>
+              <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: "26px", fontWeight: "400", color: "#f0dfc0" }}>6 trips picked for you</h2>
             </div>
-            {nearbyResults.map((trip, i) => (
-              <div key={`nearby-${i}`}>
-                {trip.vibeMatch && (
-                  <div style={{ fontSize: "11px", color: "#a8c5a0", letterSpacing: "1px", marginBottom: "6px", paddingLeft: "4px" }}>
-                    ↳ {trip.vibeMatch}
-                  </div>
-                )}
-                <TripCard trip={trip} index={i} accentColor={["#a8c5a0", "#b8a9c9", "#c9a8a8"][i % 3]} />
-              </div>
-            ))}
-          </>
-        ) : (
-          <div style={{ textAlign: "center", padding: "32px 0" }}>
-            <style>{`@keyframes spin2{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-            <div style={{ width: "24px", height: "24px", border: "2px solid rgba(168,197,160,0.2)", borderTopColor: "#a8c5a0", borderRadius: "50%", animation: "spin2 0.8s linear infinite", margin: "0 auto 12px" }} />
-            <div style={{ color: "#6a5848", fontSize: "13px" }}>Finding closer options…</div>
+            <EmailGate onDone={() => { setEmailDone(true); setShowEmailGate(false); }} />
           </div>
         )}
 
-        <div style={{ textAlign: "center", marginTop: "40px" }}>
-          <button onClick={() => { setStep(0); setResults(null); setNearbyResults(null); setAnswers(defaultAnswers); }} style={{ background: "transparent", border: "1px solid #3a2a1a", color: "#9a8878", padding: "12px 28px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontFamily: "'Crimson Pro', Georgia, serif" }}>Start Over</button>
-        </div>
+        {/* ── Results (shown after email gate dismissed) ── */}
+        {(!showEmailGate || emailDone) && (
+          <>
+            {/* ── International section ── */}
+            <div style={{ textAlign: "center", paddingTop: "40px", marginBottom: "32px" }}>
+              <div style={{ fontSize: "11px", letterSpacing: "4px", color: "#d4a373", textTransform: "uppercase", marginBottom: "12px" }}>Go Far</div>
+              <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: "28px", fontWeight: "400", color: "#f0dfc0", marginBottom: "8px" }}>3 International Trips</h2>
+              <p style={{ color: "#9a8878", fontSize: "14px" }}>Off the map. Matched to you. Tap to explore.</p>
+            </div>
+            {results?.map((trip, i) => <TripCard key={`intl-${i}`} trip={trip} index={i} />)}
+
+            {/* ── Closer to home section ── */}
+            <SectionDivider label="Stay Closer" sublabel="Same vibe, shorter journey" />
+
+            {nearbyResults ? (
+              <>
+                <div style={{ textAlign: "center", marginBottom: "24px" }}>
+                  <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: "24px", fontWeight: "400", color: "#f0dfc0", marginBottom: "6px" }}>3 Closer-to-Home Options</h2>
+                  <p style={{ color: "#9a8878", fontSize: "13px" }}>US & nearby — same energy, no passport line</p>
+                </div>
+                {nearbyResults.map((trip, i) => (
+                  <div key={`nearby-${i}`}>
+                    {trip.vibeMatch && (
+                      <div style={{ fontSize: "11px", color: "#a8c5a0", letterSpacing: "1px", marginBottom: "6px", paddingLeft: "4px" }}>
+                        ↳ {trip.vibeMatch}
+                      </div>
+                    )}
+                    <TripCard trip={trip} index={i} accentColor={["#a8c5a0", "#b8a9c9", "#c9a8a8"][i % 3]} />
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div style={{ textAlign: "center", padding: "32px 0" }}>
+                <style>{`@keyframes spin2{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+                <div style={{ width: "24px", height: "24px", border: "2px solid rgba(168,197,160,0.2)", borderTopColor: "#a8c5a0", borderRadius: "50%", animation: "spin2 0.8s linear infinite", margin: "0 auto 12px" }} />
+                <div style={{ color: "#6a5848", fontSize: "13px" }}>Finding closer options…</div>
+              </div>
+            )}
+
+            <div style={{ textAlign: "center", marginTop: "40px" }}>
+              <button onClick={() => { setStep(0); setResults(null); setNearbyResults(null); setAnswers(defaultAnswers); setEmailDone(false); setShowEmailGate(false); }} style={{ background: "transparent", border: "1px solid #3a2a1a", color: "#9a8878", padding: "12px 28px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontFamily: "'Crimson Pro', Georgia, serif" }}>Start Over</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
