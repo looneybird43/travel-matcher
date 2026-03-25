@@ -189,7 +189,7 @@ function TripCard({ trip, index, isNearby }) {
       {showContact && <ContactForm destination={trip.destination} onClose={() => setShowContact(false)} />}
       <div style={{ background: "#0e0a07", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "14px", overflow: "hidden", marginBottom: "10px" }}>
         {/* Hero */}
-        <div style={{ height: "140px", background: heroColor, display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "10px 14px", backgroundImage: trip.imageUrl ? `url(${trip.imageUrl})` : "none", backgroundSize: "cover", backgroundPosition: "center", position: "relative" }}>
+        <div style={{ height: "140px", background: heroColor, display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "10px 14px", backgroundImage: trip.imageUrl ? `url(${trip.imageUrl})` : `linear-gradient(135deg, ${heroColor} 0%, ${heroColor}cc 100%)`, backgroundSize: "cover", backgroundPosition: "center", position: "relative" }}>
           <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} />
           <div style={{ position: "relative", zIndex: 1, width: "26px", height: "26px", borderRadius: "50%", background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: "600", color: "rgba(255,255,255,0.9)" }}>{index + 1}</div>
           <span style={{ position: "relative", zIndex: 1, fontSize: "10px", fontWeight: "600", padding: "3px 10px", borderRadius: "20px", background: badgeColor.bg, color: badgeColor.color, letterSpacing: "1px", textTransform: "uppercase" }}>{isNearby ? "closer" : "go far"}</span>

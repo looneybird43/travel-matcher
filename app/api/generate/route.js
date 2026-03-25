@@ -2,19 +2,26 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-async function fetchUnsplashImage(query) {
-  try {
-    const key = process.env.UNSPLASH_ACCESS_KEY;
-    if (!key) return null;
-    const res = await fetch(
-      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape`,
-      { headers: { Authorization: `Client-ID ${key}` } }
-    );
-    const data = await res.json();
-    return data.results?.[0]?.urls?.regular || null;
-  } catch {
-    return null;
+async function fetchUnsplashImage(destination, country) {
+  const key = process.env.UNSPLASH_ACCESS_KEY;
+  if (!key) return null;
+  const queries = [
+    `${destination} ${country}`,
+    `${country} travel nature`,
+    `tropical travel adventure landscape`,
+  ];
+  for (const query of queries) {
+    try {
+      const res = await fetch(
+        `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=3&orientation=landscape`,
+        { headers: { Authorization: `Client-ID ${key}` } }
+      );
+      const data = await res.json();
+      const url = data.results?.[0]?.urls?.regular;
+      if (url) return url;
+    } catch { continue; }
   }
+  return null;
 }
 
 export async function POST(req) {
@@ -32,7 +39,7 @@ export async function POST(req) {
     // Fetch images in parallel for all trips
     const tripsWithImages = await Promise.all(
       trips.map(async (trip) => {
-        const imageUrl = await fetchUnsplashImage(`${trip.destination} ${trip.country} landscape`);
+        const imageUrl = await fetchUnsplashImage(trip.destination, trip.country);
         return { ...trip, imageUrl };
       })
     );
