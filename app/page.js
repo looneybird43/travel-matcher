@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 function bookingLink(q) { return `https://www.booking.com/search.html?ss=${encodeURIComponent(q)}&aid=YOUR_BOOKING_AID`; }
 function getyourguideLink(q) { return `https://www.getyourguide.com/s/?q=${encodeURIComponent(q)}&partner_id=YOUR_GYG_ID`; }
 function viatorLink(q) { return `https://www.viator.com/searchResults/all?text=${encodeURIComponent(q)}&mcid=YOUR_VIATOR_MCID`; }
-function skyscannerLink(q) { return `https://www.skyscanner.com/transport/flights/anywhere/${encodeURIComponent(q)}/?associateid=YOUR_SKYSCANNER_ID`; }
+function flightsLink(q) { return `https://www.google.com/travel/flights?q=flights+to+${encodeURIComponent(q)}`; }
 
 const STEPS = [
   { id: "experiences", title: "Experiences", subtitle: "Rank what matters most to you" },
@@ -239,7 +239,7 @@ function TripCard({ trip, index, isNearby }) {
             {trip.surprise && <div style={{ background: "rgba(212,163,115,0.07)", border: "1px solid rgba(212,163,115,0.15)", borderRadius: "8px", padding: "10px", marginBottom: "12px" }}><div style={{ fontSize: "10px", color: "#d4a373", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "3px" }}>Surprise factor</div><div style={{ fontSize: "12px", color: "#c4b5a5", lineHeight: "1.5" }}>{trip.surprise}</div></div>}
             <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
               <a href={bookingLink(trip.destination)} target="_blank" rel="noopener noreferrer" style={{ fontSize: "11px", padding: "6px 12px", borderRadius: "8px", background: "rgba(0,115,230,0.12)", border: "1px solid rgba(0,115,230,0.25)", color: "#7ab8f5", textDecoration: "none" }}>Hotels</a>
-              <a href={skyscannerLink(trip.destination)} target="_blank" rel="noopener noreferrer" style={{ fontSize: "11px", padding: "6px 12px", borderRadius: "8px", background: "rgba(0,180,120,0.1)", border: "1px solid rgba(0,180,120,0.25)", color: "#6dcfaa", textDecoration: "none" }}>Flights</a>
+              <a href={flightsLink(trip.destination)} target="_blank" rel="noopener noreferrer" style={{ fontSize: "11px", padding: "6px 12px", borderRadius: "8px", background: "rgba(0,180,120,0.1)", border: "1px solid rgba(0,180,120,0.25)", color: "#6dcfaa", textDecoration: "none" }}>Flights</a>
               <a href={getyourguideLink(trip.destination)} target="_blank" rel="noopener noreferrer" style={{ fontSize: "11px", padding: "6px 12px", borderRadius: "8px", background: "rgba(255,160,0,0.1)", border: "1px solid rgba(255,160,0,0.25)", color: "#f5c542", textDecoration: "none" }}>Tours</a>
               <a href={viatorLink(trip.destination)} target="_blank" rel="noopener noreferrer" style={{ fontSize: "11px", padding: "6px 12px", borderRadius: "8px", background: "rgba(200,80,80,0.1)", border: "1px solid rgba(200,80,80,0.25)", color: "#f5a0a0", textDecoration: "none" }}>Experiences</a>
             </div>
